@@ -1,59 +1,39 @@
-# DL – Developing a Neural Network Classification Model using Transfer Learning
+# DL- Developing a Neural Network Classification Model using Transfer Learning
 
 ## AIM
 To develop an image classification model using transfer learning with VGG19 architecture for the given dataset.
 
-## THEORY
-Transfer Learning is a technique where a pre-trained model (trained on a large dataset such as ImageNet) is used as a starting point for a different but related task. It leverages learned features from the original task to improve learning efficiency and performance on the new task.
-
-VGG19 is a convolutional neural network with 19 layers. It consists of multiple convolutional layers for feature extraction, followed by fully connected layers for classification. In transfer learning, we typically freeze the convolutional layers and retrain the final fully connected layers to match our dataset.
-
-### Neural Network Model
-**VGG19 Architecture for Transfer Learning:**
-
-Input Image (224x224x3)
-│
-[Convolution + ReLU] x multiple layers
-│
-Max Pooling layers
-│
-Flatten Layer
-│
-Fully Connected Layer (4096)
-│
-Fully Connected Layer (4096)
-│
-Final Fully Connected Layer → num_classes (retrained)
-│
-Softmax Activation → Class Probabilities
 
 ## DESIGN STEPS
-### STEP 1: Load and Preprocess Dataset
-- Unzip the dataset and organize into train and test folders.  
-- Resize all images to 224x224.  
-- Convert images to tensors and optionally normalize them.
+### STEP 1: 
 
-### STEP 2: Load Pretrained Model
-- Load VGG19 model from `torchvision.models`.  
-- Replace the last fully connected layer to match `num_classes` of your dataset.
+Import required libraries and define image transform
 
-### STEP 3: Define Loss and Optimizer
-- Use `CrossEntropyLoss` for multi-class classification.  
-- Use `Adam` optimizer to train only the final layer.
+### STEP 2: 
+Load training and testing datasets using ImageFolder
 
-### STEP 4: Train the Model
-- Freeze feature extractor layers.  
-- Train only the final classifier for a few epochs.  
-- Track training loss and validation loss for each epoch.
 
-### STEP 5: Evaluate the Model
-- Predict on the test set.  
-- Compute accuracy, confusion matrix, and classification report.
 
-### STEP 6: Predict on New Samples
-- Select a test image.  
-- Pass through the model and display predicted and actual class.
+### STEP 3: 
+Visualize sample images from the dataset.
 
+
+
+### STEP 4: 
+Load pre-trained VGG19, modify the final layer for binary classification, and freeze feature extractor layers.
+
+
+
+### STEP 5: 
+
+Define loss function (CrossEntropyLoss) and optimizer (Adam). Train the model and plot the loss curve.
+
+
+
+
+
+### STEP 6: 
+Evaluate the model with test accuracy, confusion matrix, classification report, and visualize predictions.
 
 
 
@@ -61,179 +41,195 @@ Softmax Activation → Class Probabilities
 
 ## PROGRAM
 
-### Name: Swaminathan.V
+### Name:DIVYA E
 
-### Register Number: 212223110057
+### Register Number:212223230050
 
 ```python
 
-import torch
+import torch as t
 import torch.nn as nn
 import torch.optim as optim
+import torchvision
+from torchvision import datasets,models
+from torchvision.models import VGG19_Weights
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-from torchvision import models, datasets, transforms
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
 import seaborn as sns
+from sklearn.metrics import confusion_matrix, classification_report
+from torchsummary import summary
 
-# Step 1: Load Data
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor()
-])
+transform=transforms.Compose([transforms.Resize((224,224)),transforms.ToTensor()])
 
 !unzip -qq ./chip_data.zip -d data
-train_dataset = datasets.ImageFolder(root="./data/dataset/train", transform=transform)
-test_dataset = datasets.ImageFolder(root="./data/dataset/test", transform=transform)
+dataset_path='./data/dataset'
+train_dataset=datasets.ImageFolder(root=f"{dataset_path}/train",transform=transform)
+test_dataset=datasets.ImageFolder(root=f"{dataset_path}/test",transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-```
+def show_sample_images(dataset,num_images=5):
+  fig,axes=plt.subplots(1,num_images,figsize=(5,5))
+  for i in range(num_images):
+    image,label=dataset[i]
+    image=image.permute(1,2,0)
+    axes[i].imshow(image)
+    axes[i].set_title(dataset.classes[label])
+    axes[i].axis("off")
+  plt.show()
+print("Number of training samples:",len(train_dataset))
+first_image,label=train_dataset[0]
+print("Image shape:",first_image.shape)
 
-```python
-# Step 2: Load Pretrained Model
-model = models.vgg19(pretrained=True)
-num_classes = len(train_dataset.classes)
-model.classifier[6] = nn.Linear(model.classifier[6].in_features, num_classes)
+print("Number of testing samples:",len(test_dataset))
+first_image1,label=test_dataset[0]
+print("Image shape:",first_image1.shape)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
+train_loader=DataLoader(train_dataset,batch_size=32,shuffle=True)
+test_loader=DataLoader(test_dataset,batch_size=32,shuffle=False)
 
-# Freeze feature extractor layers
+model=models.vgg19(weights=VGG19_Weights.DEFAULT)
+device=t.device("cuda" if t.cuda.is_available() else "cpu")
+model=model.to(device)
+summary(model,input_size=(3,224,224))
+
+model.classifier[-1]=nn.Linear(model.classifier[-1].in_features,1)
+device=t.device("cuda" if t.cuda.is_available() else "cpu")
+model=model.to(device)
+summary(model,input_size=(3,224,224))
+
 for param in model.features.parameters():
-    param.requires_grad = False
+  param.requires_grad=False
 
+criterion=nn.BCEWithLogitsLoss()
+optimizer=optim.Adam(model.parameters(),lr=0.001)
 
-```
-```python
-# Step 3: Loss and Optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.classifier[6].parameters(), lr=0.001)
+def train_model(model,train_loader,test_loader,num_epochs=100):
+  train_losses=[]
+  val_losses=[]
+  for epoch in range(num_epochs):
+    running_loss=0.0
+    for images,labels in train_loader:
+      images,labels=images.to(device),labels.to(device)
+      optimizer.zero_grad()
+      outputs=model(images)
+      loss=criterion(outputs,labels.unsqueeze(1).float())
+      loss.backward()
+      optimizer.step()
+      running_loss+=loss.item()
+    train_losses.append(running_loss/len(train_loader))
 
-```
-```python
-# Step 4: Train Model
-def train_model(model, train_loader, test_loader, num_epochs=10):
-    train_losses, val_losses = [], []
+    model.eval()
+    val_loss=0.0
+    with t.no_grad():
+      for images,labels in test_loader:
+        images,labels=images.to(device),labels.to(device)
+        outputs=model(images)
+        loss=criterion(outputs,labels.unsqueeze(1).float())
+        val_loss+=loss.item()
+    val_losses.append(val_loss/len(test_loader))
     model.train()
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        train_losses.append(running_loss / len(train_loader))
 
-        # Validation loss
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-        val_losses.append(val_loss / len(test_loader))
-        model.train()
-        print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}")
+    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Validation Loss: {val_losses[-1]:.4f}")
+  plt.figure(figsize=(8,6))
+  plt.plot(range(1,num_epochs+1),train_losses,label="Train Loss",marker="o")
+  plt.plot(range(1,num_epochs+1),val_losses,label="Validation Loss",marker="s")
+  plt.xlabel("Epochs")
+  plt.ylabel("Loss")
+  plt.title("Training and validation Loss")
+  plt.legend()
+  plt.show()
 
-    plt.figure(figsize=(8,6))
-    plt.plot(range(1, num_epochs+1), train_losses, label="Train Loss", marker='o')
-    plt.plot(range(1, num_epochs+1), val_losses, label="Validation Loss", marker='s')
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title("Training and Validation Loss")
-    plt.legend()
-    plt.show()
+device=t.device("cuda" if t.cuda.is_available() else "cpu")
+model=model.to(device)
+train_model(model,train_loader,test_loader)
 
-train_model(model, train_loader, test_loader, num_epochs=10)
-```
-```python
-# Step 5: Evaluate Model
-def test_model(model, test_loader):
-    model.eval()
-    all_preds, all_labels = [], []
-    correct, total = 0, 0
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            all_preds.extend(predicted.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-    accuracy = correct / total
-    print(f"Test Accuracy: {accuracy:.4f}")
+def test_model(model,test_loader):
+  model.eval()
+  correct=0
+  total=0
+  all_preds=[]
+  all_labels=[]
 
-    cm = confusion_matrix(all_labels, all_preds)
-    plt.figure(figsize=(8,6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=train_dataset.classes,
-                yticklabels=train_dataset.classes)
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    plt.title("Confusion Matrix")
-    plt.show()
+  with t.no_grad():
+    for images,labels in test_loader:
+      images=images.to(device)
+      labels=labels.float().unsqueeze(1).to(device)
 
-    print("Classification Report:")
-    print(classification_report(all_labels, all_preds, target_names=train_dataset.classes))
+      outputs=model(images)
+      probs=t.sigmoid(outputs)
+      predicted=(probs > 0.5).int()
+      total+=labels.size(0)
+      correct+=(predicted==labels.int()).sum().item()
 
-test_model(model, test_loader)
-```
-```python
-# Step 6: Predict on Single Image
-def predict_image(model, image_index, dataset):
-    model.eval()
-    image, label = dataset[image_index]
-    with torch.no_grad():
-        image_tensor = image.unsqueeze(0).to(device)
-        output = model(image_tensor)
-        prob = torch.softmax(output, dim=1)
-        predicted = torch.argmax(prob, dim=1).item()
-    class_names = dataset.classes
-    plt.imshow(transforms.ToPILImage()(image))
-    plt.title(f"Actual: {class_names[label]}\nPredicted: {class_names[predicted]}")
-    plt.axis("off")
-    plt.show()
-    print(f"Actual: {class_names[label]}, Predicted: {class_names[predicted]}")
+      all_preds.extend(predicted.cpu().numpy())
+      all_labels.extend(labels.cpu().numpy().astype(int))
+  accuracy=correct/total
+  print(f"Test Accuracy: {accuracy:.4f}")
 
-predict_image(model, image_index=55, dataset=test_dataset)
-predict_image(model, image_index=25, dataset=test_dataset)
+  class_names=['Negative','Positive']
+  cm=confusion_matrix(all_labels,all_preds)
+  plt.figure(figsize=(6,5))
+  sns.heatmap(cm,annot=True,fmt='d',cmap='Blues',xticklabels=class_names,yticklabels=class_names)
+  plt.xlabel("Predicted")
+  plt.ylabel("Actual")
+  plt.title("Confusion Matrix")
+  plt.show()
+
+
+  print("Classification Report :")
+  print(classification_report(all_labels,all_preds,target_names=class_names))
+test_model(model,test_loader)
+
+def predict_image(model,image_index,dataset):
+  model.eval()
+  image,label=dataset[image_index]
+  with t.no_grad():
+    image_tensor = image.unsqueeze(0).to(device)
+    output=model(image_tensor)
+    _,predicted=t.max(output,1)
+  class_names=dataset.classes
+
+  image_to_display=transforms.ToPILImage()(image)
+
+  plt.figure(figsize=(4,4))
+  plt.imshow(image_to_display)
+  plt.title(f'Actual: {class_names[label]}\nPredicted: {class_names[predicted.item()]}')
+  plt.axis('off')
+  plt.show()
+predict_image(model,image_index=55,dataset=test_dataset)
+predict_image(model,image_index=25,dataset=test_dataset)
+
+
+
+
 ```
 
 ### OUTPUT
 
-## Training Loss
- <img width="539" height="249" alt="image" src="https://github.com/user-attachments/assets/cdc4a92e-09e2-49a7-8463-d2f0ab88203f" />
+## Training Loss, Validation Loss Vs Iteration Plot
 
-
-## Validation Loss Vs Iteration Plot
-
-<img width="756" height="601" alt="image" src="https://github.com/user-attachments/assets/1eb5bb4e-d453-447c-bb1c-70e10e74e11b" />
+<img width="718" height="540" alt="image" src="https://github.com/user-attachments/assets/8a59bf42-8e82-4e76-aee6-7392e88ef989" />
 
 
 ## Confusion Matrix
 
-<img width="708" height="660" alt="image" src="https://github.com/user-attachments/assets/84cc7f98-7207-4bc4-9bca-1e9c3d5f2378" />
+
+<img width="654" height="621" alt="image" src="https://github.com/user-attachments/assets/5e9d1671-17f3-4b54-8322-8024af4fed2f" />
+
 
 ## Classification Report
 
-<img width="478" height="249" alt="image" src="https://github.com/user-attachments/assets/973b56cd-bca9-4545-8220-96aa2184a921" />
+<img width="564" height="248" alt="image" src="https://github.com/user-attachments/assets/251b0e1a-aaee-4a81-bdce-5282d29ce44e" />
 
 
 ### New Sample Data Prediction
 
-<img width="413" height="467" alt="image" src="https://github.com/user-attachments/assets/b275017b-9913-4523-82b2-834dbd33e698" />
+<img width="456" height="465" alt="image" src="https://github.com/user-attachments/assets/0848a1fd-0574-4a4f-8365-4b7bd322af60" />
+
+<img width="435" height="468" alt="image" src="https://github.com/user-attachments/assets/775f9d6e-ac43-4c86-905a-62c4c434dddb" />
 
 
-<img width="396" height="475" alt="image" src="https://github.com/user-attachments/assets/7c1d7d0d-b253-4005-a2b4-fcd47394d589" />
 
 ## RESULT
-The model successfully classifies images from the dataset using transfer learning with VGG19. 
-By freezing the convolutional layers and retraining the classifier, 
-it achieves good accuracy while reducing training time.
+Hence a Neural Network transfer model is developed using transfer learning
